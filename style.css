@@ -180,7 +180,6 @@ body {
 }
 
 .tab.active { color: var(--blue); }
-
 .tab svg { width: 24px; height: 24px; }
 
 /* ---- Cards ---- */
@@ -311,28 +310,6 @@ body {
   margin-top: 1px;
 }
 
-.month-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.month-item { text-align: center; flex: 1; }
-
-.month-value {
-  font-size: 17px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.month-label {
-  font-size: 11px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin-top: 1px;
-}
-
 /* ---- Habit List ---- */
 
 .habit-row {
@@ -429,133 +406,125 @@ body {
   transform: scale(1);
 }
 
-/* ---- Money Page ---- */
+/* ---- Stats Page ---- */
 
-.balance-section {
+.big-stat {
   text-align: center;
-  padding: 20px 0 8px;
+  padding: 16px 0 8px;
 }
 
-.balance-label {
-  font-size: 13px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
-}
-
-.balance-value {
-  font-size: 38px;
+.big-stat-value {
+  font-size: 56px;
   font-weight: 700;
-  letter-spacing: -0.8px;
+  letter-spacing: -1.5px;
   font-variant-numeric: tabular-nums;
-  margin-top: 2px;
-}
-
-.summary-pills {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  padding: 10px 0 20px;
-}
-
-.pill {
-  font-size: 14px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.date-group-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 16px 0 6px;
-}
-
-.date-group-label:first-child { padding-top: 4px; }
-
-.tx-row {
-  display: flex;
-  align-items: center;
-  padding: 11px 0;
-  gap: 12px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.tx-row:active { opacity: 0.55; }
-
-.tx-row + .tx-row {
-  border-top: 0.33px solid var(--separator);
-}
-
-.tx-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  background: var(--fill);
-  flex-shrink: 0;
-}
-
-.tx-info { flex: 1; min-width: 0; }
-
-.tx-category {
-  font-size: 17px;
-  font-weight: 400;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tx-note {
-  font-size: 13px;
-  color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tx-amount {
-  font-size: 17px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.tx-amount.income { color: var(--green); }
-
-.fab {
-  width: 50px;
-  height: 50px;
-  border-radius: 25px;
-  border: none;
-  background: var(--blue);
-  color: white;
-  font-size: 28px;
-  font-weight: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: fixed;
-  right: 20px;
-  bottom: calc(var(--tab-height) + 16px);
-  z-index: 40;
-  box-shadow: 0 2px 12px rgba(0, 122, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.08);
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s, box-shadow 0.15s;
   line-height: 1;
 }
 
-.fab:active {
-  transform: scale(0.9);
-  box-shadow: 0 1px 6px rgba(0, 122, 255, 0.25);
+.big-stat-label {
+  font-size: 15px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+.week-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  height: 120px;
+  padding: 8px 0;
+}
+
+.week-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.week-bar-fill {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 6px;
+  background: var(--fill-2);
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+}
+
+.week-bar-fill.active {
+  background: var(--blue);
+}
+
+.week-bar-fill.today {
+  background: var(--green);
+}
+
+.week-bar-label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.week-bar-count {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-height: 16px;
+}
+
+.habit-stat-row {
+  display: flex;
+  align-items: center;
+  padding: 14px 0;
+  gap: 12px;
+}
+
+.habit-stat-row + .habit-stat-row {
+  border-top: 0.33px solid var(--separator);
+}
+
+.habit-stat-emoji {
+  font-size: 26px;
+  width: 36px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.habit-stat-info { flex: 1; min-width: 0; }
+
+.habit-stat-name {
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.habit-stat-detail {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+
+.habit-stat-pct {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.mini-bar-track {
+  height: 6px;
+  background: var(--fill);
+  border-radius: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.mini-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ---- Modal / Sheet ---- */
@@ -592,7 +561,6 @@ body {
 }
 
 #modal-sheet::-webkit-scrollbar { display: none; }
-
 #modal-sheet.open { transform: translateY(0); }
 
 .sheet-handle {
@@ -646,10 +614,6 @@ body {
 
 .input::placeholder { color: var(--text-3); }
 
-.input[type="date"] {
-  color-scheme: light dark;
-}
-
 .segment-control {
   display: flex;
   background: var(--fill);
@@ -683,39 +647,6 @@ body {
     background: rgba(120, 120, 128, 0.32);
     box-shadow: none;
   }
-}
-
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.category-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 8px 2px 6px;
-  border-radius: 10px;
-  border: 2px solid transparent;
-  background: var(--fill);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-3);
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.category-btn .cat-emoji { font-size: 22px; line-height: 1.2; }
-
-.category-btn.selected {
-  border-color: var(--blue);
-  background: rgba(0, 122, 255, 0.06);
-  color: var(--blue);
 }
 
 .color-grid {
@@ -841,119 +772,3 @@ body {
 .check-bounce {
   animation: checkBounce 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-
-/* ---- Lock Screen ---- */
-
-#lock-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#lock-screen.hidden { display: none; }
-
-.lock-inner {
-  text-align: center;
-  width: 100%;
-  max-width: 320px;
-  padding: 0 20px;
-}
-
-.lock-icon {
-  color: var(--text-3);
-  margin-bottom: 16px;
-}
-
-#lock-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 24px;
-}
-
-#pin-dots {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  margin-bottom: 10px;
-  height: 14px;
-}
-
-#pin-dots span {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--fill-2);
-  transition: background 0.15s, transform 0.15s;
-}
-
-#pin-dots span.filled {
-  background: var(--text-1);
-  transform: scale(1.15);
-}
-
-#pin-error {
-  font-size: 14px;
-  color: var(--red);
-  height: 22px;
-  line-height: 22px;
-  margin-bottom: 8px;
-}
-
-#pin-pad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  max-width: 260px;
-  margin: 0 auto;
-}
-
-#pin-pad button {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  border: none;
-  background: var(--fill);
-  color: var(--text-1);
-  font-size: 28px;
-  font-weight: 300;
-  font-family: inherit;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.12s, transform 0.12s;
-}
-
-#pin-pad button:active {
-  background: var(--fill-2);
-  transform: scale(0.92);
-}
-
-#pin-pad .pin-blank {
-  background: none;
-  pointer-events: none;
-}
-
-#pin-pad .pin-del {
-  background: none;
-  color: var(--text-3);
-}
-
-#pin-pad .pin-del:active {
-  background: none;
-  opacity: 0.5;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-8px); }
-  40%, 80% { transform: translateX(8px); }
-}
-
-.shake { animation: shake 0.4s ease; }
