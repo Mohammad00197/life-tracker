@@ -469,10 +469,46 @@ document.addEventListener('click', e => {
   if (e.target.id === 'btn-save-habit') { saveHabit(); return; }
 });
 
+// ---- Auth ----
+
+const AUTH_HASH = '74603efd002ea40945e36f65cd5293699d589b5836fbb1115d62399b2a31c173';
+const AUTH_KEY = 'life-tracker-auth';
+
+async function sha256(str) {
+  const buf = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function unlockApp() {
+  $('#auth-screen').classList.add('hidden');
+  $('#app').style.display = '';
+  load();
+  render();
+}
+
+async function tryAuth() {
+  const pw = $('#auth-input')?.value || '';
+  const hash = await sha256(pw);
+  if (hash === AUTH_HASH) {
+    localStorage.setItem(AUTH_KEY, 'ok');
+    unlockApp();
+  } else {
+    $('#auth-error').textContent = 'Wrong password';
+    $('#auth-input').classList.add('shake');
+    setTimeout(() => $('#auth-input').classList.remove('shake'), 450);
+    $('#auth-input').value = '';
+  }
+}
+
+$('#auth-btn').addEventListener('click', tryAuth);
+$('#auth-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryAuth(); });
+
 // ---- Init ----
 
-load();
-render();
+if (localStorage.getItem(AUTH_KEY) === 'ok') {
+  unlockApp();
+}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
