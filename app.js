@@ -3,8 +3,12 @@
 
 const HABIT_COLORS = ['#007AFF','#34C759','#FF3B30','#FF9500','#AF52DE','#FF2D55','#30B0C7','#FFCC00'];
 const HABIT_EMOJIS = ['\u{1F9D8}','\u{1F4DA}','\u{1F4AA}','\u{1F4A7}','\u{1F634}','\u{1F3C3}','\u{1F3AF}','\u{270D}\u{FE0F}','\u{1F9E0}','\u{1F957}','\u{1F48A}','\u{1F3B8}','\u{1F6B6}','\u{1F9F9}','\u{1F4DD}','\u{1F605}'];
-const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAY_SHORT = ['S','M','T','W','T','F','S'];
+
+const PROFILES = {
+  mohammad: { name: 'Mohammad', initial: 'M', gradient: 'linear-gradient(135deg,#007AFF,#5856D6)', color: '#007AFF' },
+  karam:    { name: 'Karam',    initial: 'K', gradient: 'linear-gradient(135deg,#FF2D55,#FF9500)', color: '#FF2D55' }
+};
 
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -38,19 +42,20 @@ function weekStart() {
   return dateToStr(d);
 }
 
-function completedToday(h) { return h.completions.includes(todayStr()); }
+function completedToday(h) { return (h.completions || []).includes(todayStr()); }
 
 function periodCount(h) {
   if (h.period === 'daily') return completedToday(h) ? 1 : 0;
   const ws = weekStart();
-  return h.completions.filter(d => d >= ws).length;
+  return (h.completions || []).filter(d => d >= ws).length;
 }
 
 function calcStreak(h) {
   let streak = 0;
   const d = new Date();
-  if (!h.completions.includes(todayStr())) d.setDate(d.getDate()-1);
-  const set = new Set(h.completions);
+  const completions = h.completions || [];
+  if (!completions.includes(todayStr())) d.setDate(d.getDate()-1);
+  const set = new Set(completions);
   for (let i = 0; i < 365; i++) {
     if (set.has(dateToStr(d))) { streak++; d.setDate(d.getDate()-1); }
     else break;
@@ -59,8 +64,9 @@ function calcStreak(h) {
 }
 
 function bestStreak(h) {
-  if (!h.completions.length) return 0;
-  const sorted = [...h.completions].sort();
+  const completions = h.completions || [];
+  if (!completions.length) return 0;
+  const sorted = [...completions].sort();
   let best = 1, cur = 1;
   for (let i = 1; i < sorted.length; i++) {
     const prev = new Date(sorted[i-1] + 'T12:00:00');
@@ -72,7 +78,44 @@ function bestStreak(h) {
   return best;
 }
 
-function progress(h) { return Math.min(periodCount(h) / h.target, 1); }
+function progress(h) { return Math.min(periodCount(h) / (h.target || 1), 1); }
+
+function commitmentPct(habits) {
+  if (!habits.length) return 0;
+  const now = new Date();
+  let possible = 0, done = 0;
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const ds = dateToStr(d);
+    habits.forEach(h => {
+      if (ds < (h.createdAt || '2020-01-01')) return;
+      if (h.period === 'daily') {
+        possible++;
+        if ((h.completions || []).includes(ds)) done++;
+      }
+    });
+  }
+  habits.forEach(h => {
+    if (h.period === 'weekly') {
+      const weeks = 4;
+      possible += weeks * (h.target || 1);
+      done += Math.min((h.completions || []).length, possible);
+    }
+  });
+  return possible > 0 ? Math.round(done / possible * 100) : 0;
+}
+
+function totalCompletions(habits) {
+  return habits.reduce((s, h) => s + ((h.completions || []).length), 0);
+}
+
+function bestStreakAcross(habits) {
+  return habits.reduce((b, h) => Math.max(b, calcStreak(h)), 0);
+}
+
+function doneToday(habits) {
+  return habits.filter(h => completedToday(h)).length;
+}
 
 function ringHtml(size, sw, pct, color) {
   const r = (size - sw) / 2;
@@ -90,19 +133,93 @@ function esc(s) {
   return d.innerHTML;
 }
 
-// State
-let state = { habits: [], activeTab: 'today' };
+// ---- State ----
 
-function save() { localStorage.setItem('life-tracker-data', JSON.stringify({ habits: state.habits })); }
+let state = {
+  me: localStorage.getItem('me') || null,
+  activeTab: 'today',
+  profiles: { mohammad: { habits: [] }, karam: { habits: [] } }
+};
 
-function load() {
-  try {
-    const d = JSON.parse(localStorage.getItem('life-tracker-data'));
-    if (d) state.habits = d.habits || [];
-  } catch(e) {}
+function myHabits() { return state.me ? (state.profiles[state.me]?.habits || []) : []; }
+function otherKey() { return state.me === 'mohammad' ? 'karam' : 'mohammad'; }
+function otherHabits() { return state.profiles[otherKey()]?.habits || []; }
+
+// ---- Firebase ----
+
+let db = null;
+let syncReady = false;
+
+function showSync(text, isErr) {
+  const el = $('.sync-status') || (() => {
+    const d = document.createElement('div');
+    d.className = 'sync-status';
+    document.body.appendChild(d);
+    return d;
+  })();
+  el.textContent = text;
+  el.classList.toggle('err', !!isErr);
+  el.classList.add('show');
+  clearTimeout(showSync._t);
+  showSync._t = setTimeout(() => el.classList.remove('show'), 1500);
 }
 
-// Navigation
+function initFirebase() {
+  if (!window.FIREBASE_CONFIG || !FIREBASE_CONFIG.databaseURL) {
+    showSync('No sync — set up Firebase', true);
+    return false;
+  }
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
+    ['mohammad', 'karam'].forEach(name => {
+      db.ref('profiles/' + name).on('value', snap => {
+        const v = snap.val();
+        try {
+          state.profiles[name] = v ? (typeof v === 'string' ? JSON.parse(v) : v) : { habits: [] };
+        } catch (e) {
+          state.profiles[name] = { habits: [] };
+        }
+        if (!state.profiles[name].habits) state.profiles[name].habits = [];
+        syncReady = true;
+        if (state.me) render();
+      }, err => {
+        showSync('Sync error', true);
+        console.error(err);
+      });
+    });
+    return true;
+  } catch (e) {
+    console.error(e);
+    showSync('Sync failed', true);
+    return false;
+  }
+}
+
+function saveMine() {
+  if (!state.me) return;
+  if (db) {
+    db.ref('profiles/' + state.me).set(JSON.stringify(state.profiles[state.me]))
+      .then(() => showSync('Synced'))
+      .catch(() => showSync('Sync error', true));
+  } else {
+    // Fallback to localStorage if Firebase not configured
+    localStorage.setItem('profile-' + state.me, JSON.stringify(state.profiles[state.me]));
+  }
+}
+
+function loadLocalFallback() {
+  ['mohammad', 'karam'].forEach(name => {
+    try {
+      const raw = localStorage.getItem('profile-' + name);
+      if (raw) state.profiles[name] = JSON.parse(raw);
+    } catch (e) {}
+    if (!state.profiles[name].habits) state.profiles[name].habits = [];
+  });
+}
+
+// ---- Navigation ----
+
 function switchTab(tab) {
   state.activeTab = tab;
   $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + tab));
@@ -115,15 +232,21 @@ function render() {
   fn[state.activeTab]();
 }
 
+function profileAvatarBtn() {
+  const p = PROFILES[state.me];
+  return `<button class="profile-avatar" data-action="switch-profile" style="background:${p.gradient}">${p.initial}</button>`;
+}
+
 // ---- Today ----
 
 function renderToday() {
   const page = $('#page-today');
+  const habits = myHabits();
   const t = todayStr();
-  const done = state.habits.filter(h => completedToday(h)).length;
-  const total = state.habits.length;
-  const totalStreaks = state.habits.reduce((s, h) => s + calcStreak(h), 0);
-  const bestS = state.habits.reduce((b, h) => Math.max(b, calcStreak(h)), 0);
+  const done = doneToday(habits);
+  const total = habits.length;
+  const bestS = bestStreakAcross(habits);
+  const p = PROFILES[state.me];
 
   let habitsBlock = '';
   if (total > 0) {
@@ -132,11 +255,11 @@ function renderToday() {
         <span class="card-title">Today's Habits</span>
         <span style="font-size:13px;color:var(--text-3);font-variant-numeric:tabular-nums">${done} of ${total}</span>
       </div>
-      <div class="rings-row">${state.habits.map(h => {
-        const p = progress(h);
+      <div class="rings-row">${habits.map(h => {
+        const pp = progress(h);
         return `<div class="ring-item" data-action="toggle-habit" data-id="${h.id}">
           <div class="ring-container">
-            ${ringHtml(50, 4.5, p, h.color)}
+            ${ringHtml(50, 4.5, pp, h.color)}
             <span class="ring-emoji">${h.emoji}</span>
           </div>
           <span class="ring-label">${h.name}</span>
@@ -154,8 +277,13 @@ function renderToday() {
   }
 
   page.innerHTML = `<div class="page-header">
-      <div class="greeting">${getGreeting()}</div>
-      <div class="greeting-date">${fmtDateLong(t)}</div>
+      <div class="header-row">
+        <div>
+          <div class="greeting">${getGreeting()}, ${p.name.split(' ')[0]}</div>
+          <div class="greeting-date">${fmtDateLong(t)}</div>
+        </div>
+        ${profileAvatarBtn()}
+      </div>
     </div>
     <div class="page-content">
       ${habitsBlock}
@@ -176,11 +304,12 @@ function renderToday() {
 
 function renderHabits() {
   const page = $('#page-habits');
+  const habits = myHabits();
   let list = '';
-  if (state.habits.length) {
-    list = `<div class="card" style="padding:2px 16px">${state.habits.map(h => {
+  if (habits.length) {
+    list = `<div class="card" style="padding:2px 16px">${habits.map(h => {
       const done = completedToday(h);
-      const p = progress(h);
+      const pp = progress(h);
       const cnt = periodCount(h);
       const str = calcStreak(h);
       return `<div class="habit-row">
@@ -193,7 +322,7 @@ function renderHabits() {
               ${str > 0 ? `<span class="streak">\u{1F525} ${str}</span>` : ''}
             </div>
           </div>
-          <div class="habit-ring">${ringHtml(34, 3, p, h.color)}</div>
+          <div class="habit-ring">${ringHtml(34, 3, pp, h.color)}</div>
         </div>
         <button class="habit-check ${done ? 'done' : ''}" data-action="toggle-habit" data-id="${h.id}" ${done ? `style="background:${h.color}"` : ''}>
           <svg viewBox="0 0 16 16" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-6"/></svg>
@@ -210,129 +339,199 @@ function renderHabits() {
   page.innerHTML = `<div class="page-header">
       <div class="header-row">
         <div class="page-title">Habits</div>
-        <button class="header-action" data-action="add-habit">+</button>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="header-action" data-action="add-habit">+</button>
+          ${profileAvatarBtn()}
+        </div>
       </div>
     </div>
     <div class="page-content">${list}</div>`;
 }
 
-// ---- Stats ----
+// ---- Stats (Comparative) ----
+
+function weekDataFor(habits) {
+  const now = new Date();
+  const data = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const ds = dateToStr(d);
+    const count = habits.filter(h => (h.completions || []).includes(ds)).length;
+    data.push({ day: DAY_SHORT[d.getDay()], count, isToday: i === 0 });
+  }
+  return data;
+}
 
 function renderStats() {
   const page = $('#page-stats');
-  const habits = state.habits;
+  const myH = myHabits();
+  const otherH = otherHabits();
+  const meProf = PROFILES[state.me];
+  const otherProf = PROFILES[otherKey()];
 
-  if (!habits.length) {
-    page.innerHTML = `<div class="page-header"><div class="page-title">Stats</div></div>
+  if (!myH.length && !otherH.length) {
+    page.innerHTML = `<div class="page-header">
+        <div class="header-row">
+          <div class="page-title">Stats</div>
+          ${profileAvatarBtn()}
+        </div>
+      </div>
       <div class="page-content">
         <div class="empty-state">
           <div class="empty-icon">\u{1F4CA}</div>
           <div class="empty-title">No data yet</div>
-          <div class="empty-sub">Add habits to see your commitment stats</div>
+          <div class="empty-sub">Add habits to start the competition</div>
         </div>
       </div>`;
     return;
   }
 
-  // Overall completion rate (last 30 days)
-  const now = new Date();
-  let totalPossible = 0, totalDone = 0;
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const ds = dateToStr(d);
-    habits.forEach(h => {
-      const created = h.createdAt || '2020-01-01';
-      if (ds < created) return;
-      if (h.period === 'daily') {
-        totalPossible++;
-        if (h.completions.includes(ds)) totalDone++;
-      }
-    });
-  }
-  // For weekly habits, approximate
-  habits.forEach(h => {
-    if (h.period === 'weekly') {
-      const created = h.createdAt || '2020-01-01';
-      const weeks = Math.min(4, Math.ceil((now - new Date(created + 'T12:00:00')) / 604800000));
-      totalPossible += weeks * h.target;
-      totalDone += h.completions.length;
-    }
-  });
-  const overallPct = totalPossible > 0 ? Math.round(totalDone / totalPossible * 100) : 0;
+  const myPct = commitmentPct(myH);
+  const otherPct = commitmentPct(otherH);
+  const myDone = doneToday(myH);
+  const otherDone = doneToday(otherH);
+  const myBest = bestStreakAcross(myH);
+  const otherBest = bestStreakAcross(otherH);
+  const myTotal = totalCompletions(myH);
+  const otherTotal = totalCompletions(otherH);
 
-  // Weekly chart — last 7 days
-  const weekData = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const ds = dateToStr(d);
-    const dayDone = habits.filter(h => h.completions.includes(ds)).length;
-    weekData.push({ day: DAY_SHORT[d.getDay()], count: dayDone, isToday: i === 0, date: ds });
-  }
-  const maxCount = Math.max(habits.length, 1);
+  // Determine leader for crown
+  const myScore = myPct + myDone * 5 + myBest * 3;
+  const otherScore = otherPct + otherDone * 5 + otherBest * 3;
+  const leader = myScore > otherScore ? state.me : (otherScore > myScore ? otherKey() : null);
 
-  const weekHtml = weekData.map(w => {
-    const pct = Math.max((w.count / maxCount) * 100, 5);
-    const cls = w.isToday ? 'today' : (w.count > 0 ? 'active' : '');
-    return `<div class="week-bar">
-      <span class="week-bar-count">${w.count || ''}</span>
-      <div class="week-bar-fill ${cls}" style="height:${pct}%"></div>
-      <span class="week-bar-label">${w.day}</span>
-    </div>`;
-  }).join('');
+  const myWeek = weekDataFor(myH);
+  const otherWeek = weekDataFor(otherH);
+  const maxBar = Math.max(1, ...myWeek.map(w => w.count), ...otherWeek.map(w => w.count));
 
-  // Per-habit stats
-  const habitStatsHtml = habits.map(h => {
-    const str = calcStreak(h);
-    const best = bestStreak(h);
-    const total = h.completions.length;
+  const dualWeekChart = `<div class="card">
+    <div class="card-header"><span class="card-title">This Week</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <div>
+        <div style="font-size:12px;color:${meProf.color};font-weight:600;text-align:center;margin-bottom:6px">${meProf.name}</div>
+        <div class="week-chart" style="height:90px">${myWeek.map(w => {
+          const pct = (w.count / maxBar) * 100;
+          return `<div class="week-bar">
+            <span class="week-bar-count" style="font-size:10px">${w.count || ''}</span>
+            <div class="week-bar-fill" style="height:${Math.max(pct, 4)}%;background:${w.count > 0 ? meProf.color : 'var(--fill-2)'}"></div>
+            <span class="week-bar-label" style="font-size:10px">${w.day}</span>
+          </div>`;
+        }).join('')}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:${otherProf.color};font-weight:600;text-align:center;margin-bottom:6px">${otherProf.name}</div>
+        <div class="week-chart" style="height:90px">${otherWeek.map(w => {
+          const pct = (w.count / maxBar) * 100;
+          return `<div class="week-bar">
+            <span class="week-bar-count" style="font-size:10px">${w.count || ''}</span>
+            <div class="week-bar-fill" style="height:${Math.max(pct, 4)}%;background:${w.count > 0 ? otherProf.color : 'var(--fill-2)'}"></div>
+            <span class="week-bar-label" style="font-size:10px">${w.day}</span>
+          </div>`;
+        }).join('')}</div>
+      </div>
+    </div>
+  </div>`;
 
-    // Completion rate (last 30 days for daily, last 4 weeks for weekly)
-    let possible = 0, done = 0;
-    if (h.period === 'daily') {
-      for (let i = 0; i < 30; i++) {
-        const d = new Date(now); d.setDate(d.getDate() - i);
-        const ds = dateToStr(d);
-        if (ds < (h.createdAt || '2020-01-01')) continue;
-        possible++;
-        if (h.completions.includes(ds)) done++;
-      }
-    } else {
-      possible = 4 * h.target;
-      done = Math.min(total, possible);
-    }
-    const pct = possible > 0 ? Math.round(done / possible * 100) : 0;
+  page.innerHTML = `<div class="page-header">
+      <div class="header-row">
+        <div class="page-title">Stats</div>
+        ${profileAvatarBtn()}
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="card">
+        <div class="vs-header">
+          <div class="vs-header-side">
+            <div class="vs-header-avatar" style="background:${meProf.gradient}">${meProf.initial}</div>
+            <div class="vs-header-name">${meProf.name}</div>
+          </div>
+          <div class="vs-divider">VS</div>
+          <div class="vs-header-side">
+            <div class="vs-header-avatar" style="background:${otherProf.gradient}">${otherProf.initial}</div>
+            <div class="vs-header-name">${otherProf.name}</div>
+          </div>
+        </div>
 
-    return `<div class="habit-stat-row">
-      <span class="habit-stat-emoji">${h.emoji}</span>
-      <div class="habit-stat-info">
-        <div class="habit-stat-name">${esc(h.name)}</div>
-        <div class="habit-stat-detail">\u{1F525} ${str} current · ${best} best · ${total} total</div>
-        <div class="mini-bar-track">
-          <div class="mini-bar-fill" style="width:${pct}%;background:${h.color}"></div>
+        ${leader ? `<div class="winner-banner"><span class="crown">\u{1F451}</span> ${PROFILES[leader].name} leads</div>` : ''}
+
+        <div class="vs-row">
+          <div class="vs-side left">
+            <div class="vs-value" style="color:${meProf.color}">${myPct}%</div>
+          </div>
+          <div class="vs-divider">30 day<br>commit</div>
+          <div class="vs-side right">
+            <div class="vs-value" style="color:${otherProf.color}">${otherPct}%</div>
+          </div>
+        </div>
+
+        <div class="vs-row">
+          <div class="vs-side left">
+            <div class="vs-value" style="color:${meProf.color}">${myDone}/${myH.length || 0}</div>
+          </div>
+          <div class="vs-divider">today</div>
+          <div class="vs-side right">
+            <div class="vs-value" style="color:${otherProf.color}">${otherDone}/${otherH.length || 0}</div>
+          </div>
+        </div>
+
+        <div class="vs-row">
+          <div class="vs-side left">
+            <div class="vs-value" style="color:var(--orange)">\u{1F525} ${myBest}</div>
+          </div>
+          <div class="vs-divider">best<br>streak</div>
+          <div class="vs-side right">
+            <div class="vs-value" style="color:var(--orange)">\u{1F525} ${otherBest}</div>
+          </div>
+        </div>
+
+        <div class="vs-row">
+          <div class="vs-side left">
+            <div class="vs-value" style="color:${meProf.color}">${myTotal}</div>
+          </div>
+          <div class="vs-divider">total<br>checks</div>
+          <div class="vs-side right">
+            <div class="vs-value" style="color:${otherProf.color}">${otherTotal}</div>
+          </div>
         </div>
       </div>
-      <span class="habit-stat-pct" style="color:${h.color}">${pct}%</span>
-    </div>`;
-  }).join('');
 
-  page.innerHTML = `<div class="page-header"><div class="page-title">Stats</div></div>
-    <div class="page-content">
-      <div class="big-stat">
-        <div class="big-stat-value" style="color:var(--${overallPct >= 70 ? 'green' : overallPct >= 40 ? 'orange' : 'red'})">${overallPct}%</div>
-        <div class="big-stat-label">Commitment · last 30 days</div>
-      </div>
+      ${dualWeekChart}
 
-      <div class="card">
-        <div class="card-header"><span class="card-title">This Week</span></div>
-        <div class="week-chart">${weekHtml}</div>
-      </div>
-
-      <div class="card" style="padding:2px 16px">
-        <div class="card-header" style="padding-top:12px"><span class="card-title">Per Habit</span></div>
-        ${habitStatsHtml}
-      </div>
+      ${myH.length > 0 ? `<div class="card" style="padding:2px 16px">
+        <div class="card-header" style="padding-top:12px"><span class="card-title">My Habits</span></div>
+        ${myH.map(h => {
+          const str = calcStreak(h);
+          const best = bestStreak(h);
+          const total = (h.completions || []).length;
+          let possible = 0, done = 0;
+          if (h.period === 'daily') {
+            const now = new Date();
+            for (let i = 0; i < 30; i++) {
+              const d = new Date(now); d.setDate(d.getDate() - i);
+              const ds = dateToStr(d);
+              if (ds < (h.createdAt || '2020-01-01')) continue;
+              possible++;
+              if ((h.completions || []).includes(ds)) done++;
+            }
+          } else {
+            possible = 4 * (h.target || 1);
+            done = Math.min(total, possible);
+          }
+          const pct = possible > 0 ? Math.round(done / possible * 100) : 0;
+          return `<div class="habit-stat-row">
+            <span class="habit-stat-emoji">${h.emoji}</span>
+            <div class="habit-stat-info">
+              <div class="habit-stat-name">${esc(h.name)}</div>
+              <div class="habit-stat-detail">\u{1F525} ${str} current · ${best} best · ${total} total</div>
+              <div class="mini-bar-track">
+                <div class="mini-bar-fill" style="width:${pct}%;background:${h.color}"></div>
+              </div>
+            </div>
+            <span class="habit-stat-pct" style="color:${h.color}">${pct}%</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
     </div>`;
 }
 
@@ -357,7 +556,8 @@ function closeSheet() {
 // ---- Habit Modal ----
 
 function showHabitModal(editId) {
-  const h = editId ? state.habits.find(x => x.id === editId) : null;
+  const habits = myHabits();
+  const h = editId ? habits.find(x => x.id === editId) : null;
   const selEmoji = h ? h.emoji : HABIT_EMOJIS[0];
   const selColor = h ? h.color : HABIT_COLORS[0];
   const selPeriod = h ? h.period : 'daily';
@@ -407,31 +607,65 @@ function saveHabit() {
   const target = Math.max(1, parseInt($('#f-target')?.value) || 1);
   const editId = $('#btn-save-habit')?.dataset.edit;
 
+  const habits = myHabits();
   if (editId) {
-    const h = state.habits.find(x => x.id === editId);
+    const h = habits.find(x => x.id === editId);
     if (h) Object.assign(h, { name, emoji, color, period, target });
   } else {
-    state.habits.push({ id: uid(), name, emoji, color, target, period, completions: [], createdAt: todayStr() });
+    habits.push({ id: uid(), name, emoji, color, target, period, completions: [], createdAt: todayStr() });
   }
-  save(); closeSheet(); render();
+  state.profiles[state.me].habits = habits;
+  saveMine();
+  closeSheet();
+  render();
 }
 
 function toggleHabit(id) {
-  const h = state.habits.find(x => x.id === id);
+  const habits = myHabits();
+  const h = habits.find(x => x.id === id);
   if (!h) return;
+  if (!h.completions) h.completions = [];
   const t = todayStr();
   const i = h.completions.indexOf(t);
   if (i >= 0) h.completions.splice(i, 1);
   else h.completions.push(t);
-  save(); render();
+  state.profiles[state.me].habits = habits;
+  saveMine();
+  render();
 
   const btn = $(`.habit-check[data-id="${id}"]`);
   if (btn) { btn.classList.add('check-bounce'); setTimeout(() => btn.classList.remove('check-bounce'), 350); }
 }
 
 function deleteHabit(id) {
-  state.habits = state.habits.filter(x => x.id !== id);
-  save(); closeSheet(); render();
+  state.profiles[state.me].habits = myHabits().filter(x => x.id !== id);
+  saveMine();
+  closeSheet();
+  render();
+}
+
+// ---- Profile Switcher Sheet ----
+
+function showProfileSwitch() {
+  const meK = state.me;
+  openSheet(`<div class="sheet-title">Switch Profile</div>
+    <div class="picker-grid" style="margin-bottom:18px">
+      ${Object.entries(PROFILES).map(([k, p]) => `
+        <button class="picker-card" data-action="set-profile" data-profile="${k}" style="${k === meK ? 'outline:3px solid var(--blue)' : ''}">
+          <div class="picker-avatar" style="background:${p.gradient}">${p.initial}</div>
+          <div class="picker-name">${p.name}</div>
+        </button>
+      `).join('')}
+    </div>`);
+}
+
+function setProfile(name) {
+  state.me = name;
+  localStorage.setItem('me', name);
+  closeSheet();
+  $('#profile-picker').style.display = 'none';
+  $('#app').style.display = '';
+  render();
 }
 
 // ---- Events ----
@@ -445,8 +679,13 @@ document.addEventListener('click', e => {
     else if (a === 'edit-habit') showHabitModal(el.dataset.id);
     else if (a === 'delete-habit') deleteHabit(el.dataset.id);
     else if (a === 'go-habits') switchTab('habits');
+    else if (a === 'switch-profile') showProfileSwitch();
+    else if (a === 'set-profile') setProfile(el.dataset.profile);
     return;
   }
+
+  const pickCard = e.target.closest('#profile-picker .picker-card');
+  if (pickCard) { setProfile(pickCard.dataset.profile); return; }
 
   const tab = e.target.closest('.tab');
   if (tab) { switchTab(tab.dataset.tab); return; }
@@ -482,9 +721,16 @@ async function sha256(str) {
 
 function unlockApp() {
   $('#auth-screen').classList.add('hidden');
-  $('#app').style.display = '';
-  load();
-  render();
+
+  const ok = initFirebase();
+  if (!ok) loadLocalFallback();
+
+  if (!state.me) {
+    $('#profile-picker').style.display = 'flex';
+  } else {
+    $('#app').style.display = '';
+    render();
+  }
 }
 
 async function tryAuth() {

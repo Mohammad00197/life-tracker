@@ -30,6 +30,23 @@
     </div>
   </div>
 
+  <div id="profile-picker" style="display:none">
+    <div class="picker-inner">
+      <div class="picker-title">Who are you?</div>
+      <div class="picker-sub">Pick your profile — you can switch anytime</div>
+      <div class="picker-grid">
+        <button class="picker-card" data-profile="mohammad">
+          <div class="picker-avatar" style="background:linear-gradient(135deg,#007AFF,#5856D6)">M</div>
+          <div class="picker-name">Mohammad</div>
+        </button>
+        <button class="picker-card" data-profile="karam">
+          <div class="picker-avatar" style="background:linear-gradient(135deg,#FF2D55,#FF9500)">K</div>
+          <div class="picker-name">Karam</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="app" style="display:none">
     <div id="page-today" class="page active"></div>
     <div id="page-habits" class="page"></div>
@@ -61,6 +78,10 @@
     <div id="modal-overlay"></div>
     <div id="modal-sheet"></div>
   </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
